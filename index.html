@@ -2,35 +2,29 @@
 <html lang="uk">
 <head>
     <meta charset="UTF-8">
-    <title>Fonker Studio - Edit & Play</title>
+    <title>Fonker Studio v3 - Professional</title>
     <style>
         body { margin: 0; overflow: hidden; background: #111; font-family: sans-serif; user-select: none; }
-        #topbar { position: absolute; top: 0; width: 100%; background: #222; padding: 10px; display: flex; justify-content: center; gap: 20px; z-index: 100; border-bottom: 2px solid #444; }
-        #toolbar { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); padding: 10px; border-radius: 10px; display: flex; gap: 10px; z-index: 100;}
-        .btn { padding: 10px 20px; border: none; cursor: pointer; border-radius: 5px; color: white; font-weight: bold; transition: 0.2s; }
-        #playBtn { background: #00aa00; font-size: 18px; }
-        #playBtn.playing { background: #aa0000; }
-        #properties { position: absolute; right: 20px; top: 70px; width: 220px; background: rgba(20,20,20,0.95); padding: 20px; border-radius: 10px; color: white; display: none; z-index: 101; border: 1px solid #444; }
-        #info { position: absolute; bottom: 80px; left: 20px; color: #888; pointer-events: none; }
+        #topbar { position: absolute; top: 0; width: 100%; background: #222; padding: 10px; display: flex; justify-content: center; gap: 15px; z-index: 100; border-bottom: 2px solid #444; }
+        #properties { position: absolute; right: 20px; top: 70px; width: 200px; background: rgba(30,30,30,0.9); padding: 15px; border-radius: 8px; color: white; display: none; z-index: 101; border: 1px solid #555; }
+        .btn { padding: 8px 15px; border: none; cursor: pointer; border-radius: 4px; color: white; font-weight: bold; }
+        .ui-element { transition: opacity 0.3s; }
+        .hidden { opacity: 0; pointer-events: none; }
     </style>
 </head>
 <body>
-    <div id="topbar">
-        <button id="playBtn" class="btn" onclick="togglePlay()">▶ PLAY</button>
-        <div style="display:flex; gap:5px;">
-            <button class="btn" style="background:#444" onclick="setShape('box')">Block</button>
-            <button class="btn" style="background:#444" onclick="setShape('sphere')">Ball</button>
-        </div>
+    <div id="topbar" class="ui-element">
+        <button id="playBtn" class="btn" style="background: #28a745;" onclick="togglePlay()">▶ PLAY</button>
+        <button class="btn" style="background: #444;" onclick="setShape('box')">Cube</button>
+        <button class="btn" style="background: #444;" onclick="setShape('sphere')">Sphere</button>
     </div>
 
-    <div id="properties">
-        <h3 style="margin:0 0 10px 0; color:#00f2ff">Object Info</h3>
+    <div id="properties" class="ui-element">
+        <h4 style="margin:0 0 10px 0">Object Editor</h4>
         <label>Color: <input type="color" id="colorPicker" style="width:100%"></label><br><br>
-        <label><input type="checkbox" id="ghostCheck"> CanCollide</label><br><br>
-        <button class="btn" style="background:#ff4444; width:100%" onclick="deleteObj()">Delete</button>
+        <label><input type="checkbox" id="freezeCheck"> Anchored (Заморозка)</label><br><br>
+        <button class="btn" style="background:#dc3545; width:100%" onclick="deleteObj()">Delete</button>
     </div>
-
-    <div id="info">Edit Mode: Вільна камера | Play Mode: WASD + Physics</div>
 
     <script type="importmap">
         { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", 
@@ -40,6 +34,7 @@
     <script type="module">
         import * as THREE from 'three';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { TransformControls } from 'three/addons/controls/TransformControls.js';
 
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x1a1a20);
@@ -48,11 +43,12 @@
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        scene.add(new THREE.AmbientLight(0xffffff, 0.7));
-        const sun = new THREE.DirectionalLight(0xffffff, 1);
-        sun.position.set(10, 20, 10);
-        scene.add(sun);
-        scene.add(new THREE.GridHelper(100, 100, 0x333333, 0x222222));
+        const light = new THREE.DirectionalLight(0xffffff, 1);
+        light.position.set(10, 20, 10);
+        scene.add(light, new THREE.AmbientLight(0xffffff, 0.6));
+        
+        const grid = new THREE.GridHelper(100, 100, 0x444444, 0x222222);
+        scene.add(grid);
 
         const plane = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshBasicMaterial({visible: false}));
         plane.rotation.x = -Math.PI / 2;
@@ -61,45 +57,45 @@
         const objects = [plane];
         let isPlaying = false;
         let selectedObject = null;
-        let draggedObject = null;
         window.currentShape = 'box';
 
-        // Персонаж (ховаємо спочатку)
         const player = new THREE.Mesh(new THREE.CapsuleGeometry(0.4, 1), new THREE.MeshStandardMaterial({ color: 0xffff00 }));
         player.visible = false;
         scene.add(player);
 
         const controls = new OrbitControls(camera, renderer.domElement);
-        camera.position.set(10, 10, 10);
+        const transform = new TransformControls(camera, renderer.domElement);
+        transform.setMode('scale');
+        scene.add(transform);
 
-        const keys = {};
-        window.addEventListener('keydown', e => keys[e.code] = true);
-        window.addEventListener('keyup', e => keys[e.code] = false);
+        transform.addEventListener('dragging-changed', (e) => controls.enabled = !e.value);
 
         window.togglePlay = () => {
             isPlaying = !isPlaying;
-            const btn = document.getElementById('playBtn');
-            btn.innerText = isPlaying ? "■ STOP" : "▶ PLAY";
-            btn.classList.toggle('playing');
+            document.querySelectorAll('.ui-element').forEach(el => {
+                if(el.id !== 'topbar') el.classList.toggle('hidden', isPlaying);
+            });
+            document.getElementById('playBtn').innerText = isPlaying ? "■ STOP" : "▶ PLAY";
+            document.getElementById('playBtn').style.background = isPlaying ? "#dc3545" : "#28a745";
             
+            grid.visible = !isPlaying;
             player.visible = isPlaying;
+            transform.detach();
+            
             if (isPlaying) {
-                player.position.set(0, 5, 0); // Починаємо з повітря
+                player.position.set(0, 5, 0);
                 velocityY = 0;
-            } else {
-                document.getElementById('properties').style.display = 'none';
             }
         };
 
         window.setShape = s => window.currentShape = s;
-        window.deleteObj = () => { if(selectedObject) { scene.remove(selectedObject); objects.splice(objects.indexOf(selectedObject), 1); document.getElementById('properties').style.display = 'none'; } };
+        window.deleteObj = () => { if(selectedObject) { scene.remove(selectedObject); objects.splice(objects.indexOf(selectedObject), 1); transform.detach(); document.getElementById('properties').style.display = 'none'; } };
 
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
 
         window.addEventListener('mousedown', (e) => {
-            if (e.target.closest('button') || e.target.closest('#properties')) return;
-            if (isPlaying && e.button !== 2) return; // В режимі гри не будуємо (крім меню на ПКМ)
+            if (isPlaying || e.target.closest('button') || e.target.closest('#properties')) return;
 
             mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
             mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
@@ -108,53 +104,37 @@
 
             if (intersects.length > 0) {
                 const intersect = intersects[0];
-
-                if (e.button === 2 && intersect.object !== plane) {
+                if (intersect.object !== plane) {
                     selectedObject = intersect.object;
+                    transform.attach(selectedObject);
                     document.getElementById('properties').style.display = 'block';
-                    document.getElementById('ghostCheck').checked = selectedObject.isGhost || false;
-                    return;
+                    document.getElementById('freezeCheck').checked = selectedObject.anchored;
+                } else {
+                    const geo = window.currentShape === 'box' ? new THREE.BoxGeometry(1, 1, 1) : new THREE.SphereGeometry(0.6);
+                    const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0x44ff44 }));
+                    mesh.position.copy(intersect.point).add(intersect.face.normal.multiplyScalar(0.5)).floor().addScalar(0.5);
+                    mesh.anchored = true;
+                    scene.add(mesh);
+                    objects.push(mesh);
                 }
-
-                if (e.button === 0 && !isPlaying) {
-                    if (intersect.object !== plane) {
-                        draggedObject = intersect.object;
-                        controls.enabled = false;
-                    } else {
-                        const geo = window.currentShape === 'box' ? new THREE.BoxGeometry(1, 1, 1) : new THREE.SphereGeometry(0.6);
-                        const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0x44ff44 }));
-                        mesh.position.copy(intersect.point).add(intersect.face.normal.multiplyScalar(0.5)).floor().addScalar(0.5);
-                        scene.add(mesh);
-                        objects.push(mesh);
-                    }
-                }
+            } else {
+                transform.detach();
+                document.getElementById('properties').style.display = 'none';
             }
         });
-
-        window.addEventListener('mousemove', (e) => {
-            if (!draggedObject || isPlaying) return;
-            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
-            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
-            raycaster.setFromCamera(mouse, camera);
-            const intersect = raycaster.intersectObject(plane);
-            if (intersect) {
-                draggedObject.position.x = Math.round(intersect.point.x);
-                draggedObject.position.z = Math.round(intersect.point.z);
-            }
-        });
-
-        window.addEventListener('mouseup', () => { draggedObject = null; controls.enabled = true; });
-        window.addEventListener('contextmenu', e => e.preventDefault());
 
         document.getElementById('colorPicker').oninput = (e) => { if(selectedObject) selectedObject.material.color.set(e.target.value); };
-        document.getElementById('ghostCheck').onchange = (e) => { if(selectedObject) selectedObject.isGhost = e.target.checked; };
+        document.getElementById('freezeCheck').onchange = (e) => { if(selectedObject) selectedObject.anchored = e.target.checked; };
 
         let velocityY = 0;
+        const keys = {};
+        window.addEventListener('keydown', e => keys[e.code] = true);
+        window.addEventListener('keyup', e => keys[e.code] = false);
+
         function animate() {
             requestAnimationFrame(animate);
 
             if (isPlaying) {
-                // РУХ ПЕРСОНАЖА
                 const moveDir = new THREE.Vector3();
                 if (keys['KeyW']) moveDir.z -= 1;
                 if (keys['KeyS']) moveDir.z += 1;
@@ -168,24 +148,21 @@
                     player.position.addScaledVector(moveDir, 0.2);
                 }
 
-                // ГРАВІТАЦІЯ ТА КОЛІЗІЇ
+                // Фізика
                 const ray = new THREE.Raycaster(player.position, new THREE.Vector3(0, -1, 0), 0, 1.1);
-                const hits = ray.intersectObjects(objects.filter(o => o !== plane && !o.isGhost));
+                const hits = ray.intersectObjects(objects.filter(o => o !== plane));
                 let grounded = player.position.y <= 1;
                 
                 if (hits.length > 0) { 
-                    player.position.y = hits[0].object.position.y + 1.1; 
-                    velocityY = 0; 
-                    grounded = true; 
+                    player.position.y = hits[0].point.y + 1; 
+                    velocityY = 0; grounded = true; 
                 } else if (grounded) { 
-                    player.position.y = 1; 
-                    velocityY = 0; 
+                    player.position.y = 1; velocityY = 0; 
                 }
                 
                 if (keys['Space'] && grounded) velocityY = 0.3;
                 if (!grounded) velocityY -= 0.015;
                 player.position.y += velocityY;
-
                 controls.target.lerp(player.position, 0.1);
             }
 
