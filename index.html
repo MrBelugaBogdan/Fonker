@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <title>Fonker - Engine Test</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; }
+        #ui { position: absolute; top: 10px; left: 10px; color: white; font-family: sans-serif; }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <h1>Fonker (Alpha)</h1>
+        <p>Натисніть на екран, щоб додати блок</p>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        // 1. Сцена (де все лежить)
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x202020);
+
+        // 2. Камера (як ми бачимо світ)
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 5;
+        camera.position.y = 2;
+        camera.lookAt(0, 0, 0);
+
+        // 3. Рендерер (малювальник)
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // 4. Світло
+        const light = new THREE.DirectionalLight(0xffffff, 1);
+        light.position.set(5, 5, 5).normalize();
+        scene.add(light);
+        scene.add(new THREE.AmbientLight(0x404040));
+
+        // 5. Підлога (сітка, як у Roblox Studio)
+        const grid = new THREE.GridHelper(10, 10, 0xffffff, 0x444444);
+        scene.add(grid);
+
+        // Функція створення блоку
+        function createPart(x, y, z) {
+            const geometry = new THREE.BoxGeometry(1, 1, 1);
+            const material = new THREE.MeshLambertMaterial({ color: Math.random() * 0xffffff });
+            const cube = new THREE.Mesh(geometry, material);
+            cube.position.set(x, y, z);
+            scene.add(cube);
+        }
+
+        // Клік - створюємо блок у випадковому місці для тесту
+        window.addEventListener('click', () => {
+            const rx = (Math.random() - 0.5) * 5;
+            const rz = (Math.random() - 0.5) * 5;
+            createPart(rx, 0.5, rz);
+        });
+
+        // Цикл анімації
+        function animate() {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        console.log("Ядро графіки запущено!");
+    </script>
+</body>
+</html>
