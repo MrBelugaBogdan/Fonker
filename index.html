@@ -2,28 +2,41 @@
 <html lang="uk">
 <head>
     <meta charset="UTF-8">
-    <title>Fonker Studio v3 - Professional</title>
+    <title>Fonker Studio v3.1 - Pro Editor</title>
     <style>
         body { margin: 0; overflow: hidden; background: #111; font-family: sans-serif; user-select: none; }
         #topbar { position: absolute; top: 0; width: 100%; background: #222; padding: 10px; display: flex; justify-content: center; gap: 15px; z-index: 100; border-bottom: 2px solid #444; }
-        #properties { position: absolute; right: 20px; top: 70px; width: 200px; background: rgba(30,30,30,0.9); padding: 15px; border-radius: 8px; color: white; display: none; z-index: 101; border: 1px solid #555; }
+        #properties { position: absolute; right: 20px; top: 70px; width: 220px; background: rgba(30,30,30,0.95); padding: 15px; border-radius: 8px; color: white; display: none; z-index: 101; border: 1px solid #555; }
         .btn { padding: 8px 15px; border: none; cursor: pointer; border-radius: 4px; color: white; font-weight: bold; }
         .ui-element { transition: opacity 0.3s; }
         .hidden { opacity: 0; pointer-events: none; }
+        h4 { margin: 0 0 10px 0; color: #00f2ff; border-bottom: 1px solid #444; padding-bottom: 5px; }
+        .setting { margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; }
     </style>
 </head>
 <body>
     <div id="topbar" class="ui-element">
         <button id="playBtn" class="btn" style="background: #28a745;" onclick="togglePlay()">▶ PLAY</button>
-        <button class="btn" style="background: #444;" onclick="setShape('box')">Cube</button>
-        <button class="btn" style="background: #444;" onclick="setShape('sphere')">Sphere</button>
+        <button class="btn" style="background: #444;" onclick="setShape('box')">Block</button>
+        <button class="btn" style="background: #444;" onclick="setShape('sphere')">Ball</button>
     </div>
 
     <div id="properties" class="ui-element">
-        <h4 style="margin:0 0 10px 0">Object Editor</h4>
-        <label>Color: <input type="color" id="colorPicker" style="width:100%"></label><br><br>
-        <label><input type="checkbox" id="freezeCheck"> Anchored (Заморозка)</label><br><br>
-        <button class="btn" style="background:#dc3545; width:100%" onclick="deleteObj()">Delete</button>
+        <h4>Object Editor</h4>
+        <div class="setting">
+            <span>Color:</span>
+            <input type="color" id="colorPicker">
+        </div>
+        <div class="setting">
+            <span>Anchored:</span>
+            <input type="checkbox" id="freezeCheck">
+        </div>
+        <div class="setting">
+            <span>CanCollide:</span>
+            <input type="checkbox" id="collideCheck">
+        </div>
+        <hr style="border:0; border-top:1px solid #444; margin:10px 0;">
+        <button class="btn" style="background:#dc3545; width:100%" onclick="deleteObj()">Delete Part</button>
     </div>
 
     <script type="importmap">
@@ -43,9 +56,10 @@
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        const light = new THREE.DirectionalLight(0xffffff, 1);
-        light.position.set(10, 20, 10);
-        scene.add(light, new THREE.AmbientLight(0xffffff, 0.6));
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+        const sun = new THREE.DirectionalLight(0xffffff, 1);
+        sun.position.set(10, 20, 10);
+        scene.add(sun);
         
         const grid = new THREE.GridHelper(100, 100, 0x444444, 0x222222);
         scene.add(grid);
@@ -72,9 +86,7 @@
 
         window.togglePlay = () => {
             isPlaying = !isPlaying;
-            document.querySelectorAll('.ui-element').forEach(el => {
-                if(el.id !== 'topbar') el.classList.toggle('hidden', isPlaying);
-            });
+            document.getElementById('properties').classList.toggle('hidden', isPlaying);
             document.getElementById('playBtn').innerText = isPlaying ? "■ STOP" : "▶ PLAY";
             document.getElementById('playBtn').style.background = isPlaying ? "#dc3545" : "#28a745";
             
@@ -109,11 +121,13 @@
                     transform.attach(selectedObject);
                     document.getElementById('properties').style.display = 'block';
                     document.getElementById('freezeCheck').checked = selectedObject.anchored;
+                    document.getElementById('collideCheck').checked = selectedObject.canCollide;
                 } else {
                     const geo = window.currentShape === 'box' ? new THREE.BoxGeometry(1, 1, 1) : new THREE.SphereGeometry(0.6);
                     const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0x44ff44 }));
                     mesh.position.copy(intersect.point).add(intersect.face.normal.multiplyScalar(0.5)).floor().addScalar(0.5);
                     mesh.anchored = true;
+                    mesh.canCollide = true;
                     scene.add(mesh);
                     objects.push(mesh);
                 }
@@ -125,6 +139,13 @@
 
         document.getElementById('colorPicker').oninput = (e) => { if(selectedObject) selectedObject.material.color.set(e.target.value); };
         document.getElementById('freezeCheck').onchange = (e) => { if(selectedObject) selectedObject.anchored = e.target.checked; };
+        document.getElementById('collideCheck').onchange = (e) => { 
+            if(selectedObject) {
+                selectedObject.canCollide = e.target.checked;
+                selectedObject.material.transparent = !selectedObject.canCollide;
+                selectedObject.material.opacity = selectedObject.canCollide ? 1 : 0.5;
+            }
+        };
 
         let velocityY = 0;
         const keys = {};
@@ -148,9 +169,9 @@
                     player.position.addScaledVector(moveDir, 0.2);
                 }
 
-                // Фізика
+                // Справжня фізика
                 const ray = new THREE.Raycaster(player.position, new THREE.Vector3(0, -1, 0), 0, 1.1);
-                const hits = ray.intersectObjects(objects.filter(o => o !== plane));
+                const hits = ray.intersectObjects(objects.filter(o => o !== plane && o.canCollide));
                 let grounded = player.position.y <= 1;
                 
                 if (hits.length > 0) { 
