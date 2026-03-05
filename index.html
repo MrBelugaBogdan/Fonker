@@ -2,9 +2,9 @@
 <html lang="uk">
 <head>
     <meta charset="UTF-8">
-    <title>Fonker 2.0 - Roblox Style</title>
+    <title>Fonker Pro - Fix & Jump</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #111; font-family: sans-serif; }
+        body { margin: 0; overflow: hidden; background: #111; font-family: sans-serif; user-select: none; }
         #toolbar { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); 
                    background: rgba(0,0,0,0.8); padding: 15px; border-radius: 10px; display: flex; gap: 10px; z-index: 100;}
         .btn { padding: 10px; border: none; cursor: pointer; border-radius: 5px; color: white; font-weight: bold; }
@@ -13,8 +13,8 @@
 </head>
 <body>
     <div id="info">
-        <h1>Fonker Pro</h1>
-        <p>ПКМ: Крутити камеру | Коліщатко: Зум | Клік: Будувати | WASD: Рух</p>
+        <h1>Fonker Pro 2.1</h1>
+        <p>ПКМ: Камера | Коліщатко: Зум | Клік: Будувати | <b>Shift+Клік: Видалити</b> | Space: Стрибок</p>
     </div>
 
     <div id="toolbar">
@@ -33,37 +33,40 @@
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x333344);
+        scene.background = new THREE.Color(0x2a2a35);
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        // Світло
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-        scene.add(ambientLight);
-        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-        dirLight.position.set(10, 20, 10);
-        scene.add(dirLight);
-
-        // Сітка та підлога (невидима для будівництва)
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+        const light = new THREE.DirectionalLight(0xffffff, 0.8);
+        light.position.set(10, 20, 10);
+        scene.add(light);
+        
         const grid = new THREE.GridHelper(100, 100, 0x888888, 0x444444);
         scene.add(grid);
+
+        // Підлога
         const planeGeo = new THREE.PlaneGeometry(100, 100);
         const plane = new THREE.Mesh(planeGeo, new THREE.MeshBasicMaterial({visible: false}));
         plane.rotation.x = -Math.PI / 2;
         scene.add(plane);
         
-        const objects = [plane]; // Масив для перевірки куди тицьнули
+        const objects = [plane];
 
         // Гравець
         const player = new THREE.Mesh(new THREE.CapsuleGeometry(0.4, 1, 4, 8), new THREE.MeshStandardMaterial({ color: 0xffff00 }));
         player.position.y = 1;
         scene.add(player);
 
-        // Камера та управління
+        // Фізика стрибка
+        let velocityY = 0;
+        const gravity = -0.01;
+        const jumpForce = 0.25;
+        let isGrounded = true;
+
         const controls = new OrbitControls(camera, renderer.domElement);
-        controls.enableDamping = true;
         camera.position.set(5, 10, 15);
         
         const keys = {};
@@ -74,9 +77,9 @@
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
 
-        // БУДІВНИЦТВО ЯК У ROBLOX
+        // БУДІВНИЦТВО ТА ВИДАЛЕННЯ
         window.addEventListener('mousedown', (e) => {
-            if (e.button !== 0 || e.target.tagName === 'BUTTON') return; // Тільки ліва кнопка
+            if (e.button !== 0 || e.target.tagName === 'BUTTON') return;
 
             mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
             mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
@@ -85,24 +88,30 @@
             const intersects = raycaster.intersectObjects(objects);
             if (intersects.length > 0) {
                 const intersect = intersects[0];
-                const cube = new THREE.Mesh(
-                    new THREE.BoxGeometry(1, 1, 1), 
-                    new THREE.MeshStandardMaterial({ color: window.currentColor })
-                );
                 
-                // Магія позиціонування: беремо точку кліку + нормаль поверхні
-                cube.position.copy(intersect.point).add(intersect.face.normal);
-                cube.position.divideScalar(1).floor().addScalar(0.5); 
-                
-                scene.add(cube);
-                objects.push(cube);
+                if (e.shiftKey) { // ВИДАЛЕННЯ
+                    if (intersect.object !== plane) {
+                        scene.remove(intersect.object);
+                        objects.splice(objects.indexOf(intersect.object), 1);
+                    }
+                } else { // БУДІВНИЦТВО (Фікс бага з позицією)
+                    const cube = new THREE.Mesh(
+                        new THREE.BoxGeometry(1, 1, 1), 
+                        new THREE.MeshStandardMaterial({ color: window.currentColor })
+                    );
+                    cube.position.copy(intersect.point).add(intersect.face.normal.multiplyScalar(0.5));
+                    cube.position.divideScalar(1).floor().addScalar(0.5); 
+                    
+                    scene.add(cube);
+                    objects.push(cube);
+                }
             }
         });
 
         function animate() {
             requestAnimationFrame(animate);
 
-            // Рух гравця відносно камери
+            // Рух
             const direction = new THREE.Vector3();
             if (keys['KeyW']) direction.z -= 1;
             if (keys['KeyS']) direction.z += 1;
@@ -111,16 +120,27 @@
 
             if (direction.length() > 0) {
                 direction.normalize();
-                // Повертаємо рух туди, куди дивиться камера (тільки по горизонталі)
                 const angle = Math.atan2(camera.position.x - player.position.x, camera.position.z - player.position.z);
                 direction.applyAxisAngle(new THREE.Vector3(0, 1, 0), angle);
                 player.position.addScaledVector(direction, 0.15);
             }
 
-            // Камера слідує за гравцем
+            // Стрибок
+            if (keys['Space'] && isGrounded) {
+                velocityY = jumpForce;
+                isGrounded = false;
+            }
+            velocityY += gravity;
+            player.position.y += velocityY;
+
+            if (player.position.y <= 1) {
+                player.position.y = 1;
+                velocityY = 0;
+                isGrounded = true;
+            }
+
             controls.target.copy(player.position);
             controls.update();
-
             renderer.render(scene, camera);
         }
         animate();
