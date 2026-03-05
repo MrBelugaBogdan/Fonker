@@ -2,26 +2,25 @@
 <html lang="uk">
 <head>
     <meta charset="UTF-8">
-    <title>Fonker Pro 2.3 - Physics Update</title>
+    <title>Fonker Pro 2.4 - Roblox Physics Fix</title>
     <style>
         body { margin: 0; overflow: hidden; background: #111; font-family: sans-serif; user-select: none; }
         #toolbar { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); 
                    background: rgba(0,0,0,0.8); padding: 15px; border-radius: 10px; display: flex; gap: 10px; z-index: 100;}
         .btn { padding: 10px; border: none; cursor: pointer; border-radius: 5px; color: white; font-weight: bold; }
         #info { position: absolute; top: 10px; left: 10px; color: white; z-index: 100; pointer-events: none;}
-        .active { outline: 3px solid yellow; }
     </style>
 </head>
 <body>
     <div id="info">
-        <h1>Fonker Pro 2.3</h1>
-        <p><b>Space:</b> Стрибай по блоках! | <b>Ghost Mode:</b> Блоки-привиди</p>
+        <h1>Fonker Pro 2.4</h1>
+        <p>Блоки тепер <b>ТВЕРДІ</b> | Коліщатко: Zoom | Shift+Click: Видалити</p>
     </div>
 
     <div id="toolbar">
         <button class="btn" style="background: #ff4444;" onclick="window.currentColor=0xff4444">Червоний</button>
         <button class="btn" style="background: #44ff44;" onclick="window.currentColor=0x44ff44">Зелений</button>
-        <button class="btn" id="ghostBtn" style="background: #888;" onclick="toggleGhost()">Привид: ВИМК</button>
+        <button id="ghostBtn" class="btn" style="background: #555;" onclick="toggleGhost()">Привид: ВИМК</button>
     </div>
 
     <script type="importmap">
@@ -41,28 +40,29 @@
         document.body.appendChild(renderer.domElement);
 
         scene.add(new THREE.AmbientLight(0xffffff, 0.7));
-        const light = new THREE.DirectionalLight(0xffffff, 0.8);
-        light.position.set(10, 20, 10);
-        scene.add(light);
-        scene.add(new THREE.GridHelper(100, 100, 0x555555, 0x333333));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(10, 20, 10);
+        scene.add(dirLight);
+        scene.add(new THREE.GridHelper(100, 100, 0x444444, 0x222222));
 
         const plane = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshBasicMaterial({visible: false}));
         plane.rotation.x = -Math.PI / 2;
         scene.add(plane);
         
         const objects = [plane];
-        const solidObjects = []; // Тільки тверді блоки
+        const solidObjects = []; 
 
         const player = new THREE.Mesh(new THREE.CapsuleGeometry(0.4, 1, 4, 8), new THREE.MeshStandardMaterial({ color: 0xffff00 }));
-        player.position.y = 1;
+        player.position.set(0, 1, 0);
         scene.add(player);
 
+        // КАМЕРА ЯК У ROBLOX
         const controls = new OrbitControls(camera, renderer.domElement);
-        controls.minDistance = 1;
-        controls.maxDistance = 100; // Збільшено ліміт камери!
         controls.enableDamping = true;
-        camera.position.set(0, 10, 20);
-        
+        controls.minDistance = 0.1; // Можна зайти в першу особу
+        controls.maxDistance = 50;  // Обмеження віддалення
+        camera.position.set(0, 5, 10);
+
         const keys = {};
         window.addEventListener('keydown', (e) => keys[e.code] = true);
         window.addEventListener('keyup', (e) => keys[e.code] = false);
@@ -72,8 +72,9 @@
 
         window.toggleGhost = () => {
             ghostMode = !ghostMode;
-            document.getElementById('ghostBtn').innerText = ghostMode ? "Привид: УВІМК" : "Привид: ВИМК";
-            document.getElementById('ghostBtn').style.background = ghostMode ? "#33f" : "#888";
+            const btn = document.getElementById('ghostBtn');
+            btn.innerText = ghostMode ? "Привид: УВІМК" : "Привид: ВИМК";
+            btn.style.background = ghostMode ? "#33f" : "#555";
         };
 
         const raycaster = new THREE.Raycaster();
@@ -92,22 +93,22 @@
                     if (intersect.object !== plane) {
                         scene.remove(intersect.object);
                         objects.splice(objects.indexOf(intersect.object), 1);
-                        const solidIdx = solidObjects.indexOf(intersect.object);
-                        if(solidIdx > -1) solidObjects.splice(solidIdx, 1);
+                        const sIdx = solidObjects.indexOf(intersect.object);
+                        if(sIdx > -1) solidObjects.splice(sIdx, 1);
                     }
                 } else {
                     const cube = new THREE.Mesh(
                         new THREE.BoxGeometry(1, 1, 1), 
                         new THREE.MeshStandardMaterial({ 
-                            color: window.currentColor,
-                            transparent: ghostMode,
-                            opacity: ghostMode ? 0.5 : 1
+                            color: window.currentColor, 
+                            transparent: ghostMode, 
+                            opacity: ghostMode ? 0.5 : 1 
                         })
                     );
                     cube.position.copy(intersect.point).add(intersect.face.normal.multiplyScalar(0.5)).floor().addScalar(0.5);
                     scene.add(cube);
                     objects.push(cube);
-                    if (!ghostMode) solidObjects.push(cube); // Додаємо до твердих, якщо не привид
+                    if (!ghostMode) solidObjects.push(cube);
                 }
             }
         });
@@ -119,7 +120,7 @@
         function animate() {
             requestAnimationFrame(animate);
 
-            // Рух
+            // Рух гравця
             const moveDir = new THREE.Vector3();
             if (keys['KeyW']) moveDir.z -= 1;
             if (keys['KeyS']) moveDir.z += 1;
@@ -133,14 +134,12 @@
                 player.position.addScaledVector(moveDir, 0.2);
             }
 
-            // ПЕРЕВІРКА ПІДЛОГИ (Колізії)
-            let onBlock = false;
+            // ПЕРЕВІРКА КОЛІЗІЙ (Твердість блоків)
             const playerRay = new THREE.Raycaster(player.position, new THREE.Vector3(0, -1, 0), 0, 1.1);
             const hits = playerRay.intersectObjects(solidObjects);
             
             if (hits.length > 0) {
-                onBlock = true;
-                if (velocityY < 0) {
+                if (velocityY <= 0) {
                     player.position.y = hits[0].object.position.y + 1;
                     velocityY = 0;
                     isGrounded = true;
@@ -161,8 +160,10 @@
             velocityY += gravity;
             player.position.y += velocityY;
 
-            controls.target.lerp(player.position, 0.2);
+            // Камера слідує за гравцем
+            controls.target.copy(player.position);
             controls.update();
+
             renderer.render(scene, camera);
         }
         animate();
