@@ -2,17 +2,15 @@
 <html lang="uk">
 <head>
     <meta charset="UTF-8">
-    <title>Fonker Pro 2.5 - Editor</title>
+    <title>Fonker Studio - Pro Editor</title>
     <style>
         body { margin: 0; overflow: hidden; background: #111; font-family: sans-serif; user-select: none; }
         #toolbar { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); 
                    background: rgba(0,0,0,0.8); padding: 15px; border-radius: 10px; display: flex; gap: 10px; z-index: 100;}
         .btn { padding: 10px; border: none; cursor: pointer; border-radius: 5px; color: white; font-weight: bold; }
         #info { position: absolute; top: 10px; left: 10px; color: white; z-index: 100; pointer-events: none;}
-        
-        /* Панель властивостей блоку */
         #properties { 
-            position: absolute; right: 20px; top: 50%; transform: translateY(-50%);
+            position: absolute; right: 20px; top: 20px; width: 200px;
             background: rgba(0,0,0,0.9); padding: 20px; border-radius: 10px; 
             color: white; display: none; z-index: 101; border: 1px solid #555;
         }
@@ -20,22 +18,20 @@
 </head>
 <body>
     <div id="info">
-        <h1>Fonker Pro 2.5</h1>
-        <p><b>Клік на блок:</b> Редагувати | <b>WASD:</b> Рух | <b>Space:</b> Стрибок</p>
+        <h1>Fonker Studio</h1>
+        <p><b>LMB:</b> Тягнути блок | <b>RMB:</b> Меню блоку | <b>WASD:</b> Рух</p>
     </div>
 
     <div id="properties">
-        <h3>Властивості блоку</h3>
-        <p id="blockId">ID: -</p>
-        <label><input type="checkbox" id="ghostCheck"> Режим Привида</label><br><br>
-        <button class="btn" style="background: #ff4444; width: 100%;" onclick="deleteSelected()">Видалити</button><br><br>
-        <button class="btn" style="background: #555; width: 100%;" onclick="closeProperties()">Закрити</button>
+        <h3 style="margin-top:0">Студія Деталей</h3>
+        <label>Колір: <input type="color" id="blockColorPicker"></label><br><br>
+        <label><input type="checkbox" id="ghostCheck"> CanCollide (Привид)</label><br><br>
+        <button class="btn" style="background: #ff4444; width: 100%;" onclick="deleteSelected()">Delete</button>
     </div>
 
     <div id="toolbar">
-        <button class="btn" style="background: #ff4444;" onclick="window.currentColor=0xff4444">Червоний</button>
-        <button class="btn" style="background: #44ff44;" onclick="window.currentColor=0x44ff44">Зелений</button>
-        <button class="btn" style="background: #4444ff;" onclick="window.currentColor=0x4444ff">Синій</button>
+        <button class="btn" style="background: #44ff44;" onclick="window.currentMode='build'">Режим: БУДУВАТИ</button>
+        <button class="btn" style="background: #4444ff;" onclick="window.currentMode='move'">Режим: РУХ</button>
     </div>
 
     <script type="importmap">
@@ -55,9 +51,9 @@
         document.body.appendChild(renderer.domElement);
 
         scene.add(new THREE.AmbientLight(0xffffff, 0.7));
-        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-        dirLight.position.set(10, 20, 10);
-        scene.add(dirLight);
+        const light = new THREE.PointLight(0xffffff, 1.2);
+        light.position.set(10, 20, 10);
+        scene.add(light);
         scene.add(new THREE.GridHelper(100, 100, 0x444444, 0x222222));
 
         const plane = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshBasicMaterial({visible: false}));
@@ -66,78 +62,97 @@
         
         const objects = [plane];
         let selectedObject = null;
+        let draggedObject = null;
 
-        const player = new THREE.Mesh(new THREE.CapsuleGeometry(0.4, 1, 4, 8), new THREE.MeshStandardMaterial({ color: 0xffff00 }));
+        const player = new THREE.Mesh(new THREE.CapsuleGeometry(0.4, 1), new THREE.MeshStandardMaterial({ color: 0xffff00 }));
         player.position.set(0, 1, 0);
         scene.add(player);
 
         const controls = new OrbitControls(camera, renderer.domElement);
-        controls.enableDamping = true;
-        controls.minDistance = 0.5;
-        controls.maxDistance = 60;
+        controls.enablePan = false;
+        controls.minDistance = 0.1; 
         camera.position.set(0, 5, 10);
 
         const keys = {};
         window.addEventListener('keydown', (e) => keys[e.code] = true);
         window.addEventListener('keyup', (e) => keys[e.code] = false);
 
-        window.currentColor = 0x44ff44;
+        window.currentMode = 'build';
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
 
-        // ФУНКЦІЇ ПАНЕЛІ
-        window.closeProperties = () => { document.getElementById('properties').style.display = 'none'; selectedObject = null; };
+        // ОБРОБКА МИШІ
+        window.addEventListener('mousedown', (e) => {
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(objects);
+
+            if (intersects.length > 0) {
+                const intersect = intersects[0];
+
+                // ПРАВА КНОПКА - МЕНЮ
+                if (e.button === 2 && intersect.object !== plane) {
+                    selectedObject = intersect.object;
+                    document.getElementById('properties').style.display = 'block';
+                    document.getElementById('ghostCheck').checked = selectedObject.isGhost;
+                    return;
+                }
+
+                // ЛІВА КНОПКА - БУДУВАТИ АБО ТЯГНУТИ
+                if (e.button === 0) {
+                    if (intersect.object !== plane) {
+                        draggedObject = intersect.object;
+                        controls.enabled = false; // Вимикаємо обертання камери поки тягнемо
+                    } else if (window.currentMode === 'build') {
+                        const cube = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color: 0x44ff44 }));
+                        cube.position.copy(intersect.point).add(intersect.face.normal.multiplyScalar(0.5)).floor().addScalar(0.5);
+                        scene.add(cube);
+                        objects.push(cube);
+                    }
+                }
+            }
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!draggedObject) return;
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            const intersect = raycaster.intersectObject(plane);
+            if (intersect) {
+                draggedObject.position.copy(intersect.point).floor().addScalar(0.5);
+                draggedObject.position.y = 0.5; // Тримаємо на землі
+            }
+        });
+
+        window.addEventListener('mouseup', () => {
+            draggedObject = null;
+            controls.enabled = true;
+        });
+
+        window.addEventListener('contextmenu', e => e.preventDefault());
+
         window.deleteSelected = () => {
             if (selectedObject) {
                 scene.remove(selectedObject);
                 objects.splice(objects.indexOf(selectedObject), 1);
-                closeProperties();
+                document.getElementById('properties').style.display = 'none';
             }
         };
+
         document.getElementById('ghostCheck').addEventListener('change', (e) => {
             if (selectedObject) selectedObject.isGhost = e.target.checked;
         });
 
-        window.addEventListener('mousedown', (e) => {
-            if (e.target.closest('#properties') || e.target.closest('#toolbar')) return;
-
-            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
-            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
-            raycaster.setFromCamera(mouse, camera);
-
-            const intersects = raycaster.intersectObjects(objects);
-            if (intersects.length > 0) {
-                const intersect = intersects[0];
-                
-                // Виділення існуючого блоку (ПКМ або просто клік якщо блок є)
-                if (intersect.object !== plane) {
-                    selectedObject = intersect.object;
-                    document.getElementById('properties').style.display = 'block';
-                    document.getElementById('blockId').innerText = "ID: " + selectedObject.uuid.slice(0,8);
-                    document.getElementById('ghostCheck').checked = selectedObject.isGhost || false;
-                    return;
-                }
-
-                // Будівництво
-                const cube = new THREE.Mesh(
-                    new THREE.BoxGeometry(1, 1, 1), 
-                    new THREE.MeshStandardMaterial({ color: window.currentColor })
-                );
-                cube.position.copy(intersect.point).add(intersect.face.normal.multiplyScalar(0.5)).floor().addScalar(0.5);
-                cube.isGhost = false;
-                scene.add(cube);
-                objects.push(cube);
-            }
-        });
-
         let velocityY = 0;
-        const gravity = -0.012;
+        const gravity = -0.015;
         let isGrounded = false;
 
         function animate() {
             requestAnimationFrame(animate);
 
-            // Рух
+            // РУХ ГРАВЦЯ
             const moveDir = new THREE.Vector3();
             if (keys['KeyW']) moveDir.z -= 1;
             if (keys['KeyS']) moveDir.z += 1;
@@ -151,38 +166,32 @@
                 player.position.addScaledVector(moveDir, 0.2);
             }
 
-            // ПЕРЕВІРКА КОЛІЗІЙ
-            isGrounded = false;
-            if (player.position.y <= 1) {
-                player.position.y = 1;
-                velocityY = 0;
-                isGrounded = true;
-            }
-
-            // Промінь вниз для твердих блоків
+            // ФІЗИКА (Твердість)
             const ray = new THREE.Raycaster(player.position, new THREE.Vector3(0, -1, 0), 0, 1.1);
             const hits = ray.intersectObjects(objects.filter(o => o !== plane && !o.isGhost));
+            
             if (hits.length > 0) {
                 player.position.y = hits[0].object.position.y + 1;
                 velocityY = 0;
                 isGrounded = true;
-            }
-
-            if (keys['Space'] && isGrounded) {
-                velocityY = 0.25;
+            } else if (player.position.y <= 1) {
+                player.position.y = 1;
+                velocityY = 0;
+                isGrounded = true;
+            } else {
                 isGrounded = false;
             }
 
+            if (keys['Space'] && isGrounded) velocityY = 0.3;
             velocityY += gravity;
             player.position.y += velocityY;
 
+            // КАМЕРА (Жорстке слідування за Roblox)
+            const relativeCameraOffset = new THREE.Vector3(0, 5, 10);
+            const cameraOffset = relativeCameraOffset.applyMatrix4(player.matrixWorld);
+            
             controls.target.copy(player.position);
             controls.update();
-
-            // Камера проходить крізь Ghost блоки
-            raycaster.set(player.position, camera.position.clone().sub(player.position).normalize());
-            const camHits = raycaster.intersectObjects(objects.filter(o => o !== plane && !o.isGhost));
-            // (Тут можна додати логіку відстрибування камери)
 
             renderer.render(scene, camera);
         }
