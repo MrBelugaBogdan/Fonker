@@ -2,92 +2,124 @@
 <html lang="uk">
 <head>
     <meta charset="UTF-8">
-    <title>Fonker Alpha - Player Mode</title>
+    <title>Fonker 2.0 - Roblox Style</title>
     <style>
         body { margin: 0; overflow: hidden; background: #111; font-family: sans-serif; }
         #toolbar { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); 
                    background: rgba(0,0,0,0.8); padding: 15px; border-radius: 10px; display: flex; gap: 10px; z-index: 100;}
         .btn { padding: 10px; border: none; cursor: pointer; border-radius: 5px; color: white; font-weight: bold; }
-        #info { position: absolute; top: 10px; left: 10px; color: white; z-index: 100;}
+        #info { position: absolute; top: 10px; left: 10px; color: white; z-index: 100; pointer-events: none;}
     </style>
 </head>
 <body>
     <div id="info">
-        <h1>Fonker Alpha</h1>
-        <p>Керування: <b>W, A, S, D</b> | Блоків: <span id="count">0</span></p>
+        <h1>Fonker Pro</h1>
+        <p>ПКМ: Крутити камеру | Коліщатко: Зум | Клік: Будувати | WASD: Рух</p>
     </div>
 
     <div id="toolbar">
-        <button class="btn" style="background: #ff4444;" onclick="currentColor=0xff4444">Червоний</button>
-        <button class="btn" style="background: #44ff44;" onclick="currentColor=0x44ff44">Зелений</button>
-        <button class="btn" style="background: #4444ff;" onclick="currentColor=0x4444ff">Синій</button>
+        <button class="btn" style="background: #ff4444;" onclick="window.currentColor=0xff4444">Червоний</button>
+        <button class="btn" style="background: #44ff44;" onclick="window.currentColor=0x44ff44">Зелений</button>
+        <button class="btn" style="background: #4444ff;" onclick="window.currentColor=0x4444ff">Синій</button>
     </div>
 
     <script type="importmap">
-        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", 
+                       "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
     </script>
 
     <script type="module">
         import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-        // --- НАЛАШТУВАННЯ СЦЕНИ ---
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x222222);
+        scene.background = new THREE.Color(0x333344);
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-        const light = new THREE.DirectionalLight(0xffffff, 1);
-        light.position.set(5, 10, 7);
-        scene.add(light);
-        scene.add(new THREE.GridHelper(50, 50, 0x888888, 0x444444));
+        // Світло
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(10, 20, 10);
+        scene.add(dirLight);
 
-        // --- СТВОРЕННЯ ГРАВЦЯ ---
-        const playerGeometry = new THREE.CapsuleGeometry(0.4, 1, 4, 8);
-        const playerMaterial = new THREE.MeshLambertMaterial({ color: 0xffff00 });
-        const player = new THREE.Mesh(playerGeometry, playerMaterial);
-        player.position.y = 1; 
+        // Сітка та підлога (невидима для будівництва)
+        const grid = new THREE.GridHelper(100, 100, 0x888888, 0x444444);
+        scene.add(grid);
+        const planeGeo = new THREE.PlaneGeometry(100, 100);
+        const plane = new THREE.Mesh(planeGeo, new THREE.MeshBasicMaterial({visible: false}));
+        plane.rotation.x = -Math.PI / 2;
+        scene.add(plane);
+        
+        const objects = [plane]; // Масив для перевірки куди тицьнули
+
+        // Гравець
+        const player = new THREE.Mesh(new THREE.CapsuleGeometry(0.4, 1, 4, 8), new THREE.MeshStandardMaterial({ color: 0xffff00 }));
+        player.position.y = 1;
         scene.add(player);
 
-        // --- УПРАВЛІННЯ ---
+        // Камера та управління
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        camera.position.set(5, 10, 15);
+        
         const keys = {};
         window.addEventListener('keydown', (e) => keys[e.code] = true);
         window.addEventListener('keyup', (e) => keys[e.code] = false);
 
         window.currentColor = 0x44ff44;
-        let blockCount = 0;
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
 
-        // Функція створення блоку
-        function createPart(x, z) {
-            const cube = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ color: window.currentColor }));
-            cube.position.set(Math.round(x), 0.5, Math.round(z));
-            scene.add(cube);
-            blockCount++;
-            document.getElementById('count').innerText = blockCount;
-        }
-
+        // БУДІВНИЦТВО ЯК У ROBLOX
         window.addEventListener('mousedown', (e) => {
-            if(e.target.tagName === 'BUTTON') return;
-            // Ставимо блок там, де стоїть гравець (як у Minecraft)
-            createPart(player.position.x, player.position.z);
+            if (e.button !== 0 || e.target.tagName === 'BUTTON') return; // Тільки ліва кнопка
+
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+
+            const intersects = raycaster.intersectObjects(objects);
+            if (intersects.length > 0) {
+                const intersect = intersects[0];
+                const cube = new THREE.Mesh(
+                    new THREE.BoxGeometry(1, 1, 1), 
+                    new THREE.MeshStandardMaterial({ color: window.currentColor })
+                );
+                
+                // Магія позиціонування: беремо точку кліку + нормаль поверхні
+                cube.position.copy(intersect.point).add(intersect.face.normal);
+                cube.position.divideScalar(1).floor().addScalar(0.5); 
+                
+                scene.add(cube);
+                objects.push(cube);
+            }
         });
 
-        // --- ЦИКЛ ГРИ ---
         function animate() {
             requestAnimationFrame(animate);
 
-            // Рух гравця
-            const speed = 0.1;
-            if (keys['KeyW']) player.position.z -= speed;
-            if (keys['KeyS']) player.position.z += speed;
-            if (keys['KeyA']) player.position.x -= speed;
-            if (keys['KeyD']) player.position.x += speed;
+            // Рух гравця відносно камери
+            const direction = new THREE.Vector3();
+            if (keys['KeyW']) direction.z -= 1;
+            if (keys['KeyS']) direction.z += 1;
+            if (keys['KeyA']) direction.x -= 1;
+            if (keys['KeyD']) direction.x += 1;
+
+            if (direction.length() > 0) {
+                direction.normalize();
+                // Повертаємо рух туди, куди дивиться камера (тільки по горизонталі)
+                const angle = Math.atan2(camera.position.x - player.position.x, camera.position.z - player.position.z);
+                direction.applyAxisAngle(new THREE.Vector3(0, 1, 0), angle);
+                player.position.addScaledVector(direction, 0.15);
+            }
 
             // Камера слідує за гравцем
-            camera.position.set(player.position.x, player.position.y + 5, player.position.z + 10);
-            camera.lookAt(player.position);
+            controls.target.copy(player.position);
+            controls.update();
 
             renderer.render(scene, camera);
         }
