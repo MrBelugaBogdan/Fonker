@@ -2,40 +2,35 @@
 <html lang="uk">
 <head>
     <meta charset="UTF-8">
-    <title>Fonker Studio 2.6 - Multishape</title>
+    <title>Fonker Studio - Edit & Play</title>
     <style>
         body { margin: 0; overflow: hidden; background: #111; font-family: sans-serif; user-select: none; }
-        #toolbar { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); 
-                   background: rgba(0,0,0,0.8); padding: 15px; border-radius: 10px; display: flex; gap: 10px; z-index: 100;}
-        .btn { padding: 10px; border: none; cursor: pointer; border-radius: 5px; color: white; font-weight: bold; transition: 0.2s; }
-        .btn:hover { opacity: 0.8; transform: scale(1.05); }
-        #info { position: absolute; top: 10px; left: 10px; color: white; z-index: 100; pointer-events: none;}
-        #properties { 
-            position: absolute; right: 20px; top: 20px; width: 220px;
-            background: rgba(20,20,20,0.95); padding: 20px; border-radius: 10px; 
-            color: white; display: none; z-index: 101; border: 1px solid #444; box-shadow: 0 0 15px rgba(0,0,0,0.5);
-        }
+        #topbar { position: absolute; top: 0; width: 100%; background: #222; padding: 10px; display: flex; justify-content: center; gap: 20px; z-index: 100; border-bottom: 2px solid #444; }
+        #toolbar { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); padding: 10px; border-radius: 10px; display: flex; gap: 10px; z-index: 100;}
+        .btn { padding: 10px 20px; border: none; cursor: pointer; border-radius: 5px; color: white; font-weight: bold; transition: 0.2s; }
+        #playBtn { background: #00aa00; font-size: 18px; }
+        #playBtn.playing { background: #aa0000; }
+        #properties { position: absolute; right: 20px; top: 70px; width: 220px; background: rgba(20,20,20,0.95); padding: 20px; border-radius: 10px; color: white; display: none; z-index: 101; border: 1px solid #444; }
+        #info { position: absolute; bottom: 80px; left: 20px; color: #888; pointer-events: none; }
     </style>
 </head>
 <body>
-    <div id="info">
-        <h1>Fonker Studio 2.6</h1>
-        <p><b>ЛКМ:</b> Тягнути | <b>ПКМ:</b> Меню деталі | <b>WASD:</b> Рух</p>
+    <div id="topbar">
+        <button id="playBtn" class="btn" onclick="togglePlay()">▶ PLAY</button>
+        <div style="display:flex; gap:5px;">
+            <button class="btn" style="background:#444" onclick="setShape('box')">Block</button>
+            <button class="btn" style="background:#444" onclick="setShape('sphere')">Ball</button>
+        </div>
     </div>
 
     <div id="properties">
-        <h3 style="margin-top:0; color: #44ff44;">Properties</h3>
-        <label>Колір: <input type="color" id="colorPicker" style="width:100%; cursor:pointer"></label><br><br>
-        <label><input type="checkbox" id="ghostCheck"> CanCollide (Привид)</label><br><br>
-        <button class="btn" style="background: #ff4444; width: 100%;" onclick="deleteSelected()">Delete Part</button>
-        <button class="btn" style="background: #444; width: 100%; margin-top:5px;" onclick="closeMenu()">Close</button>
+        <h3 style="margin:0 0 10px 0; color:#00f2ff">Object Info</h3>
+        <label>Color: <input type="color" id="colorPicker" style="width:100%"></label><br><br>
+        <label><input type="checkbox" id="ghostCheck"> CanCollide</label><br><br>
+        <button class="btn" style="background:#ff4444; width:100%" onclick="deleteObj()">Delete</button>
     </div>
 
-    <div id="toolbar">
-        <button class="btn" id="modePart" style="background: #555;" onclick="setShape('box')">Block</button>
-        <button class="btn" id="modeBall" style="background: #555;" onclick="setShape('sphere')">Ball</button>
-        <button class="btn" id="modeCyl" style="background: #555;" onclick="setShape('cyl')">Cylinder</button>
-    </div>
+    <div id="info">Edit Mode: Вільна камера | Play Mode: WASD + Physics</div>
 
     <script type="importmap">
         { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", 
@@ -54,42 +49,58 @@
         document.body.appendChild(renderer.domElement);
 
         scene.add(new THREE.AmbientLight(0xffffff, 0.7));
-        const light = new THREE.DirectionalLight(0xffffff, 1);
-        light.position.set(10, 20, 10);
-        scene.add(light);
-        scene.add(new THREE.GridHelper(100, 100, 0x444444, 0x222222));
+        const sun = new THREE.DirectionalLight(0xffffff, 1);
+        sun.position.set(10, 20, 10);
+        scene.add(sun);
+        scene.add(new THREE.GridHelper(100, 100, 0x333333, 0x222222));
 
         const plane = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshBasicMaterial({visible: false}));
         plane.rotation.x = -Math.PI / 2;
         scene.add(plane);
         
         const objects = [plane];
+        let isPlaying = false;
         let selectedObject = null;
         let draggedObject = null;
         window.currentShape = 'box';
 
+        // Персонаж (ховаємо спочатку)
         const player = new THREE.Mesh(new THREE.CapsuleGeometry(0.4, 1), new THREE.MeshStandardMaterial({ color: 0xffff00 }));
-        player.position.set(0, 1, 0);
+        player.visible = false;
         scene.add(player);
 
         const controls = new OrbitControls(camera, renderer.domElement);
-        controls.enablePan = false;
-        camera.position.set(0, 8, 12);
+        camera.position.set(10, 10, 10);
 
         const keys = {};
-        window.addEventListener('keydown', (e) => keys[e.code] = true);
-        window.addEventListener('keyup', (e) => keys[e.code] = false);
+        window.addEventListener('keydown', e => keys[e.code] = true);
+        window.addEventListener('keyup', e => keys[e.code] = false);
+
+        window.togglePlay = () => {
+            isPlaying = !isPlaying;
+            const btn = document.getElementById('playBtn');
+            btn.innerText = isPlaying ? "■ STOP" : "▶ PLAY";
+            btn.classList.toggle('playing');
+            
+            player.visible = isPlaying;
+            if (isPlaying) {
+                player.position.set(0, 5, 0); // Починаємо з повітря
+                velocityY = 0;
+            } else {
+                document.getElementById('properties').style.display = 'none';
+            }
+        };
+
+        window.setShape = s => window.currentShape = s;
+        window.deleteObj = () => { if(selectedObject) { scene.remove(selectedObject); objects.splice(objects.indexOf(selectedObject), 1); document.getElementById('properties').style.display = 'none'; } };
 
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
 
-        window.setShape = (s) => { window.currentShape = s; };
-        window.closeMenu = () => { document.getElementById('properties').style.display = 'none'; };
-
-        // ОБРОБКА КЛІКІВ
         window.addEventListener('mousedown', (e) => {
-            if (e.target.closest('#properties') || e.target.closest('#toolbar')) return;
-            
+            if (e.target.closest('button') || e.target.closest('#properties')) return;
+            if (isPlaying && e.button !== 2) return; // В режимі гри не будуємо (крім меню на ПКМ)
+
             mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
             mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
             raycaster.setFromCamera(mouse, camera);
@@ -98,31 +109,20 @@
             if (intersects.length > 0) {
                 const intersect = intersects[0];
 
-                // ПРАВА КНОПКА (ПКМ) - МЕНЮ
-                if (e.button === 2) {
-                    if (intersect.object !== plane) {
-                        selectedObject = intersect.object;
-                        document.getElementById('properties').style.display = 'block';
-                        document.getElementById('ghostCheck').checked = selectedObject.isGhost || false;
-                        document.getElementById('colorPicker').value = "#" + selectedObject.material.color.getHexString();
-                    }
+                if (e.button === 2 && intersect.object !== plane) {
+                    selectedObject = intersect.object;
+                    document.getElementById('properties').style.display = 'block';
+                    document.getElementById('ghostCheck').checked = selectedObject.isGhost || false;
                     return;
                 }
 
-                // ЛІВА КНОПКА (ЛКМ)
-                if (e.button === 0) {
+                if (e.button === 0 && !isPlaying) {
                     if (intersect.object !== plane) {
                         draggedObject = intersect.object;
                         controls.enabled = false;
                     } else {
-                        // БУДУВАННЯ
-                        let geo;
-                        if (window.currentShape === 'box') geo = new THREE.BoxGeometry(1, 1, 1);
-                        else if (window.currentShape === 'sphere') geo = new THREE.SphereGeometry(0.6, 16, 16);
-                        else geo = new THREE.CylinderGeometry(0.5, 0.5, 1, 16);
-
-                        const mat = new THREE.MeshStandardMaterial({ color: 0x44ff44 });
-                        const mesh = new THREE.Mesh(geo, mat);
+                        const geo = window.currentShape === 'box' ? new THREE.BoxGeometry(1, 1, 1) : new THREE.SphereGeometry(0.6);
+                        const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0x44ff44 }));
                         mesh.position.copy(intersect.point).add(intersect.face.normal.multiplyScalar(0.5)).floor().addScalar(0.5);
                         scene.add(mesh);
                         objects.push(mesh);
@@ -132,7 +132,7 @@
         });
 
         window.addEventListener('mousemove', (e) => {
-            if (!draggedObject) return;
+            if (!draggedObject || isPlaying) return;
             mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
             mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
             raycaster.setFromCamera(mouse, camera);
@@ -146,57 +146,49 @@
         window.addEventListener('mouseup', () => { draggedObject = null; controls.enabled = true; });
         window.addEventListener('contextmenu', e => e.preventDefault());
 
-        window.deleteSelected = () => {
-            if (selectedObject) {
-                scene.remove(selectedObject);
-                objects.splice(objects.indexOf(selectedObject), 1);
-                closeMenu();
-            }
-        };
-
-        document.getElementById('colorPicker').addEventListener('input', (e) => {
-            if (selectedObject) selectedObject.material.color.set(e.target.value);
-        });
-
-        document.getElementById('ghostCheck').addEventListener('change', (e) => {
-            if (selectedObject) {
-                selectedObject.isGhost = e.target.checked;
-                selectedObject.material.transparent = selectedObject.isGhost;
-                selectedObject.material.opacity = selectedObject.isGhost ? 0.6 : 1;
-            }
-        });
+        document.getElementById('colorPicker').oninput = (e) => { if(selectedObject) selectedObject.material.color.set(e.target.value); };
+        document.getElementById('ghostCheck').onchange = (e) => { if(selectedObject) selectedObject.isGhost = e.target.checked; };
 
         let velocityY = 0;
         function animate() {
             requestAnimationFrame(animate);
 
-            // РУХ ГРАВЦЯ
-            const moveDir = new THREE.Vector3();
-            if (keys['KeyW']) moveDir.z -= 1;
-            if (keys['KeyS']) moveDir.z += 1;
-            if (keys['KeyA']) moveDir.x -= 1;
-            if (keys['KeyD']) moveDir.x += 1;
+            if (isPlaying) {
+                // РУХ ПЕРСОНАЖА
+                const moveDir = new THREE.Vector3();
+                if (keys['KeyW']) moveDir.z -= 1;
+                if (keys['KeyS']) moveDir.z += 1;
+                if (keys['KeyA']) moveDir.x -= 1;
+                if (keys['KeyD']) moveDir.x += 1;
 
-            if (moveDir.length() > 0) {
-                moveDir.normalize();
-                const angle = Math.atan2(camera.position.x - player.position.x, camera.position.z - player.position.z);
-                moveDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), angle);
-                player.position.addScaledVector(moveDir, 0.2);
+                if (moveDir.length() > 0) {
+                    moveDir.normalize();
+                    const angle = Math.atan2(camera.position.x - player.position.x, camera.position.z - player.position.z);
+                    moveDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), angle);
+                    player.position.addScaledVector(moveDir, 0.2);
+                }
+
+                // ГРАВІТАЦІЯ ТА КОЛІЗІЇ
+                const ray = new THREE.Raycaster(player.position, new THREE.Vector3(0, -1, 0), 0, 1.1);
+                const hits = ray.intersectObjects(objects.filter(o => o !== plane && !o.isGhost));
+                let grounded = player.position.y <= 1;
+                
+                if (hits.length > 0) { 
+                    player.position.y = hits[0].object.position.y + 1.1; 
+                    velocityY = 0; 
+                    grounded = true; 
+                } else if (grounded) { 
+                    player.position.y = 1; 
+                    velocityY = 0; 
+                }
+                
+                if (keys['Space'] && grounded) velocityY = 0.3;
+                if (!grounded) velocityY -= 0.015;
+                player.position.y += velocityY;
+
+                controls.target.lerp(player.position, 0.1);
             }
 
-            // ФІЗИКА
-            const ray = new THREE.Raycaster(player.position, new THREE.Vector3(0, -1, 0), 0, 1.1);
-            const hits = ray.intersectObjects(objects.filter(o => o !== plane && !o.isGhost));
-            let grounded = player.position.y <= 1;
-            if (hits.length > 0) { player.position.y = hits[0].object.position.y + 1.1; velocityY = 0; grounded = true; }
-            else if (grounded) { player.position.y = 1; velocityY = 0; }
-            
-            if (keys['Space'] && grounded) velocityY = 0.25;
-            if (!grounded) velocityY -= 0.01;
-            player.position.y += velocityY;
-
-            // КАМЕРА
-            controls.target.copy(player.position);
             controls.update();
             renderer.render(scene, camera);
         }
