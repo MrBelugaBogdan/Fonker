@@ -2,26 +2,25 @@
 <html lang="uk">
 <head>
     <meta charset="UTF-8">
-    <title>Fonker 2.0 - Builder Mode</title>
+    <title>Fonker Alpha - Player Mode</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #111; font-family: 'Segoe UI', sans-serif; }
+        body { margin: 0; overflow: hidden; background: #111; font-family: sans-serif; }
         #toolbar { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); 
-                   background: rgba(0,0,0,0.8); padding: 15px; border-radius: 10px; display: flex; gap: 10px; }
+                   background: rgba(0,0,0,0.8); padding: 15px; border-radius: 10px; display: flex; gap: 10px; z-index: 100;}
         .btn { padding: 10px; border: none; cursor: pointer; border-radius: 5px; color: white; font-weight: bold; }
-        #info { position: absolute; top: 10px; left: 10px; color: white; pointer-events: none; }
+        #info { position: absolute; top: 10px; left: 10px; color: white; z-index: 100;}
     </style>
 </head>
 <body>
     <div id="info">
         <h1>Fonker Alpha</h1>
-        <p>Блоків у світі: <span id="count">0</span></p>
+        <p>Керування: <b>W, A, S, D</b> | Блоків: <span id="count">0</span></p>
     </div>
 
     <div id="toolbar">
-        <button class="btn" style="background: #ff4444;" onclick="setColor(0xff4444)">Червоний</button>
-        <button class="btn" style="background: #44ff44;" onclick="setColor(0x44ff44)">Зелений</button>
-        <button class="btn" style="background: #4444ff;" onclick="setColor(0x4444ff)">Синій</button>
-        <button class="btn" style="background: #555;" onclick="clearWorld()">Очистити все</button>
+        <button class="btn" style="background: #ff4444;" onclick="currentColor=0xff4444">Червоний</button>
+        <button class="btn" style="background: #44ff44;" onclick="currentColor=0x44ff44">Зелений</button>
+        <button class="btn" style="background: #4444ff;" onclick="currentColor=0x4444ff">Синій</button>
     </div>
 
     <script type="importmap">
@@ -31,61 +30,65 @@
     <script type="module">
         import * as THREE from 'three';
 
-        let currentColor = 0xff4444;
-        let blockCount = 0;
+        // --- НАЛАШТУВАННЯ СЦЕНИ ---
         const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x222222);
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
-        
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        // Світло та сітка
-        scene.add(new THREE.AmbientLight(0x666666));
+        scene.add(new THREE.AmbientLight(0xffffff, 0.5));
         const light = new THREE.DirectionalLight(0xffffff, 1);
         light.position.set(5, 10, 7);
         scene.add(light);
-        scene.add(new THREE.GridHelper(20, 20, 0x888888, 0x444444));
+        scene.add(new THREE.GridHelper(50, 50, 0x888888, 0x444444));
 
-        camera.position.set(5, 5, 10);
-        camera.lookAt(0, 0, 0);
+        // --- СТВОРЕННЯ ГРАВЦЯ ---
+        const playerGeometry = new THREE.CapsuleGeometry(0.4, 1, 4, 8);
+        const playerMaterial = new THREE.MeshLambertMaterial({ color: 0xffff00 });
+        const player = new THREE.Mesh(playerGeometry, playerMaterial);
+        player.position.y = 1; 
+        scene.add(player);
+
+        // --- УПРАВЛІННЯ ---
+        const keys = {};
+        window.addEventListener('keydown', (e) => keys[e.code] = true);
+        window.addEventListener('keyup', (e) => keys[e.code] = false);
+
+        window.currentColor = 0x44ff44;
+        let blockCount = 0;
 
         // Функція створення блоку
-        window.createPart = (x, y, z) => {
-            const geometry = new THREE.BoxGeometry(1, 1, 1);
-            const material = new THREE.MeshLambertMaterial({ color: currentColor });
-            const cube = new THREE.Mesh(geometry, material);
-            
-            // Округлюємо координати, щоб блоки ставали рівно (Grid Snapping)
+        function createPart(x, z) {
+            const cube = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ color: window.currentColor }));
             cube.position.set(Math.round(x), 0.5, Math.round(z));
             scene.add(cube);
             blockCount++;
             document.getElementById('count').innerText = blockCount;
-        };
+        }
 
-        window.setColor = (color) => { currentColor = color; };
-        window.clearWorld = () => { location.reload(); };
-
-        // Клік для створення
-        window.addEventListener('mousedown', (event) => {
-            if (event.target.tagName === 'BUTTON') return;
-            
-            // Проста математика, щоб зрозуміти, куди ми клацнули в 3D
-            const vector = new THREE.Vector3(
-                (event.clientX / window.innerWidth) * 2 - 1,
-                -(event.clientY / window.innerHeight) * 2 + 1,
-                0.5
-            );
-            vector.unproject(camera);
-            const dir = vector.sub(camera.position).normalize();
-            const distance = -camera.position.y / dir.y;
-            const pos = camera.position.clone().add(dir.multiplyScalar(distance));
-            
-            createPart(pos.x, 0.5, pos.z);
+        window.addEventListener('mousedown', (e) => {
+            if(e.target.tagName === 'BUTTON') return;
+            // Ставимо блок там, де стоїть гравець (як у Minecraft)
+            createPart(player.position.x, player.position.z);
         });
 
+        // --- ЦИКЛ ГРИ ---
         function animate() {
             requestAnimationFrame(animate);
+
+            // Рух гравця
+            const speed = 0.1;
+            if (keys['KeyW']) player.position.z -= speed;
+            if (keys['KeyS']) player.position.z += speed;
+            if (keys['KeyA']) player.position.x -= speed;
+            if (keys['KeyD']) player.position.x += speed;
+
+            // Камера слідує за гравцем
+            camera.position.set(player.position.x, player.position.y + 5, player.position.z + 10);
+            camera.lookAt(player.position);
+
             renderer.render(scene, camera);
         }
         animate();
